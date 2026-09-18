@@ -12,9 +12,11 @@ mod ui_model;
 mod value;
 #[macro_use]
 mod ui;
+#[allow(deprecated)] // TreeView/ListStore/CellRenderer APIs, deprecated since 4.10
 mod cmd_line;
 mod cursor;
 mod error;
+#[allow(deprecated)] // TreeView/TreeStore/ComboBox/CellRenderer APIs, deprecated since 4.10
 mod file_browser;
 mod grid;
 mod highlight;
@@ -24,6 +26,7 @@ mod nvim;
 mod nvim_viewport;
 mod plug_manager;
 mod popup_menu;
+#[allow(deprecated)] // TreeView/ListStore/CellRenderer APIs, deprecated since 4.10
 mod project;
 mod render;
 mod settings;
