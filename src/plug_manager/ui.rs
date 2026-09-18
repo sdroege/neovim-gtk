@@ -27,20 +27,13 @@ impl<'a> Ui<'a> {
     }
 
     pub fn show<T: IsA<gtk::Window>>(&mut self, parent: &T) {
-        let dlg = gtk::Dialog::with_buttons(
-            Some("Plug"),
-            Some(parent),
-            gtk::DialogFlags::DESTROY_WITH_PARENT,
-            &[
-                ("Cancel", gtk::ResponseType::Cancel),
-                ("Ok", gtk::ResponseType::Ok),
-            ],
-        );
-
-        dlg.set_default_size(800, 600);
-        dlg.set_modal(true);
-        let content = dlg.content_area();
-        content.set_vexpand(true);
+        let dlg = gtk::Window::builder()
+            .title("Plug")
+            .transient_for(parent)
+            .modal(true)
+            .default_width(800)
+            .default_height(600)
+            .build();
 
         let header_bar_title = gtk::Label::builder()
             .label("Plug")
@@ -50,16 +43,25 @@ impl<'a> Ui<'a> {
             .title_widget(&header_bar_title)
             .build();
 
+        let cancel_btn = gtk::Button::with_label("Cancel");
+        let ok_btn = gtk::Button::with_label("Ok");
+        ok_btn.add_css_class("suggested-action");
+
         let add_plug_btn = gtk::Button::with_label("Add..");
         add_plug_btn.add_css_class("suggested-action");
-        header_bar.pack_end(&add_plug_btn);
-
         let enable_swc = gtk::Switch::new();
         enable_swc.set_valign(gtk::Align::Center);
 
+        header_bar.pack_start(&cancel_btn);
+        header_bar.pack_end(&ok_btn);
+        header_bar.pack_end(&add_plug_btn);
         header_bar.pack_end(&enable_swc);
-
         dlg.set_titlebar(Some(&header_bar));
+
+        let content = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .vexpand(true)
+            .build();
 
         let pages = SettingsPages::new(glib::clone!(
             #[strong]
@@ -115,20 +117,33 @@ impl<'a> Ui<'a> {
         ));
 
         content.append(&*pages);
+        dlg.set_child(Some(&content));
 
         let manager = self.manager.clone();
-        dlg.run_async(move |dlg, id| {
-            if id == gtk::ResponseType::Ok {
+        ok_btn.connect_clicked(glib::clone!(
+            #[strong]
+            dlg,
+            move |_| {
                 let mut manager = manager.borrow_mut();
                 manager.clear_removed();
                 manager.save();
                 if let Some(path) = NvimConfig::new(manager.generate_config()).generate_config() {
                     manager.vim_plug.reload(path.to_str().unwrap());
                 }
-            }
 
-            dlg.close();
-        });
+                dlg.close();
+            }
+        ));
+
+        cancel_btn.connect_clicked(glib::clone!(
+            #[strong]
+            dlg,
+            move |_| {
+                dlg.close();
+            }
+        ));
+
+        dlg.set_visible(true);
     }
 
     fn fill_plugin_list(&self, panel: &gtk::Box, store: &Store) -> gtk::ListBox {

@@ -1,3 +1,5 @@
+use futures::channel::oneshot;
+
 use gtk::prelude::*;
 
 use super::store;
@@ -12,17 +14,24 @@ impl<'a> Builder<'a> {
     }
 
     pub async fn show<F: IsA<gtk::Window>>(&self, parent: &F) -> Option<store::PlugInfo> {
-        let dlg = gtk::Dialog::with_buttons(
-            Some(self.title),
-            Some(parent),
-            gtk::DialogFlags::USE_HEADER_BAR | gtk::DialogFlags::DESTROY_WITH_PARENT,
-            &[
-                ("Cancel", gtk::ResponseType::Cancel),
-                ("Ok", gtk::ResponseType::Ok),
-            ],
-        );
+        let dlg = gtk::Window::builder()
+            .title(self.title)
+            .transient_for(parent)
+            .modal(true)
+            .default_width(400)
+            .build();
 
-        let content = dlg.content_area();
+        let header_bar = gtk::HeaderBar::builder().build();
+        let cancel_btn = gtk::Button::with_label("Cancel");
+        let ok_btn = gtk::Button::with_label("Ok");
+        ok_btn.add_css_class("suggested-action");
+        header_bar.pack_start(&cancel_btn);
+        header_bar.pack_end(&ok_btn);
+        dlg.set_titlebar(Some(&header_bar));
+
+        let content = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .build();
         let border = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .margin_start(12)
@@ -70,6 +79,7 @@ impl<'a> Builder<'a> {
 
         border.append(&list);
         content.append(&border);
+        dlg.set_child(Some(&content));
 
         path_e.connect_changed(glib::clone!(
             #[strong]
@@ -81,7 +91,45 @@ impl<'a> Builder<'a> {
             }
         ));
 
-        let res = if dlg.run_future().await == gtk::ResponseType::Ok {
+        let (sender, receiver) = oneshot::channel::<bool>();
+        let sender = std::rc::Rc::new(std::cell::RefCell::new(Some(sender)));
+
+        ok_btn.connect_clicked(glib::clone!(
+            #[strong]
+            sender,
+            move |_| {
+                if let Some(sender) = sender.borrow_mut().take() {
+                    let _ = sender.send(true);
+                }
+            }
+        ));
+
+        cancel_btn.connect_clicked(glib::clone!(
+            #[strong]
+            sender,
+            move |_| {
+                if let Some(sender) = sender.borrow_mut().take() {
+                    let _ = sender.send(false);
+                }
+            }
+        ));
+
+        dlg.connect_close_request(glib::clone!(
+            #[strong]
+            sender,
+            move |_| {
+                if let Some(sender) = sender.borrow_mut().take() {
+                    let _ = sender.send(false);
+                }
+                glib::Propagation::Proceed
+            }
+        ));
+
+        dlg.set_visible(true);
+
+        let res = receiver.await.unwrap_or(false);
+
+        let res = if res {
             let path = path_e.text().to_string();
             let name = name_e.text();
 
